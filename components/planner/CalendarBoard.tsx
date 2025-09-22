@@ -2,10 +2,11 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import FullCalendar, { DateSelectArg, EventClickArg } from '@fullcalendar/react';
+import FullCalendar from '@fullcalendar/react';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import interactionPlugin from '@fullcalendar/interaction';
 import koLocale from '@fullcalendar/core/locales/ko';
+import type { DateSelectArg, EventClickArg } from '@fullcalendar/core';
 
 import dayjs from 'dayjs';
 import 'dayjs/locale/ko';
