@@ -4,7 +4,6 @@ import dayjs from 'dayjs';
 import isSameOrAfter from 'dayjs/plugin/isSameOrAfter';
 dayjs.extend(isSameOrAfter);
 import { useEffect, useMemo, useRef, useState } from 'react';
-import dayjs from 'dayjs';
 import type { PostgrestSingleResponse } from '@supabase/supabase-js';
 import { getSupabaseClient } from '@/lib/supabaseClient';
 import { confirmAsync } from '@/lib/ui';
