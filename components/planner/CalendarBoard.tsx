@@ -1,4 +1,3 @@
-// components/planner/CalendarBoard.tsx
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -6,7 +5,7 @@ import FullCalendar from '@fullcalendar/react';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import interactionPlugin from '@fullcalendar/interaction';
 import koLocale from '@fullcalendar/core/locales/ko';
-import type { DateSelectArg, EventClickArg } from '@fullcalendar/core';
+import type { DateSelectArg, EventClickArg, CalendarApi } from '@fullcalendar/core';
 
 import dayjs from 'dayjs';
 import 'dayjs/locale/ko';
@@ -110,6 +109,15 @@ export default function CalendarBoard({
   const [events, setEvents] = useState<any[]>([]);
   const [selected, setSelected] = useState<{ start: string; end: string } | null>(null);
 
+  // ---------- FullCalendar API helpers ----------
+  const getApi = (): CalendarApi | undefined => calendarRef.current?.getApi();
+  const applySelection = (startISO: string, endISO: string) => {
+    const api = getApi();
+    if (!api) return;
+    programmaticSelectRef.current = true;
+    api.select(new Date(startISO), new Date(endISO));
+  };
+
   /** 외부 plans → FullCalendar events */
   useEffect(() => {
     if (!plans) return;
@@ -126,16 +134,18 @@ export default function CalendarBoard({
         extendedProps: p,
       }))
     );
+  }, [plans]);
 
-    // 드래그 선택 유지
-    if (selected) {
-      const api = calendarRef.current?.getApi();
-      if (api) {
-        programmaticSelectRef.current = true;
-        api.select(new Date(selected.start), new Date(selected.end));
-      }
+  /** selected 상태가 바뀌면 실제 캘린더에 반영 */
+  useEffect(() => {
+    const api = getApi();
+    if (!api) return;
+    if (!selected) {
+      api.unselect();
+      return;
     }
-  }, [plans, selected]);
+    applySelection(selected.start, selected.end);
+  }, [selected]);
 
   /** 드래그 선택 */
   const handleSelect = (sel: DateSelectArg) => {
@@ -156,11 +166,7 @@ export default function CalendarBoard({
     localStorage.setItem(LS_CURRENT_PLAN, JSON.stringify({ id: 'draft', label, start: startISO, end: endISO }));
     window.dispatchEvent(new CustomEvent('timer-current-plan', { detail: { id: 'draft', label, start: startISO, end: endISO } }));
 
-    const api = calendarRef.current?.getApi();
-    if (api) {
-      programmaticSelectRef.current = true;
-      api.select(sel.start, sel.end);
-    }
+    // 여기서는 api.select를 호출하지 않습니다. (selected effect가 처리)
   };
 
   /** 이벤트 클릭 → 타이머와 동기화 */
@@ -254,7 +260,7 @@ export default function CalendarBoard({
       {showHeaderInput && headerInput}
 
       <FullCalendar
-        ref={(r) => (calendarRef.current = r)}
+        ref={calendarRef}
         plugins={[timeGridPlugin, interactionPlugin]}
         initialView="timeGridWeek"
         selectable={!readOnly}
