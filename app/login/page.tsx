@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { getSupabaseBrowser } from '@/lib/supabase/browser';
 
@@ -18,7 +18,8 @@ function safeRedirect(q: string | null) {
   }
 }
 
-export default function LoginPage() {
+// useSearchParams를 사용하는 실제 화면(클라이언트 컴포넌트)
+function LoginInner() {
   const router = useRouter();
   const params = useSearchParams();
   const redirectParam = safeRedirect(params.get('redirect'));
@@ -107,5 +108,14 @@ export default function LoginPage() {
         </a>
       </div>
     </main>
+  );
+}
+
+// 페이지 컴포넌트: Suspense 경계로 감싸서 빌드 타임 SSG 에러 방지
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div />}>
+      <LoginInner />
+    </Suspense>
   );
 }
