@@ -2,7 +2,8 @@
 import 'server-only'; // ✅ 서버 전용 강제
 
 import { cookies } from 'next/headers';
-import { createServerClient, type SupabaseClient } from '@supabase/ssr';
+import { createServerClient } from '@supabase/ssr';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/types/supabase';
 
 export function getSupabaseServer(): SupabaseClient<Database> {
