@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
@@ -39,11 +39,11 @@ export default function UnifiedTopBar({
   // ✅ 뷰어 모드일 때 학생별 플래너/대시보드
   const plannerPath =
     viewer && effectiveViewerName
-      ? `/student?viewer=${viewer}&name=${effectiveViewerName}`
+      ? `/student?viewer=${viewer}&name=${encodeURIComponent(effectiveViewerName)}`
       : "/student";
   const dashboardPath =
     viewer && effectiveViewerName
-      ? `/student/dashboard?viewer=${viewer}&name=${effectiveViewerName}`
+      ? `/student/dashboard?viewer=${viewer}&name=${encodeURIComponent(effectiveViewerName)}`
       : "/student/dashboard";
 
   return (
@@ -51,26 +51,57 @@ export default function UnifiedTopBar({
       <div className="mx-auto flex max-w-screen-xl items-center justify-between px-6 py-3">
         {/* ---------------- LEFT ---------------- */}
         <div className="flex items-center space-x-3">
-          {/* ✅ 로그인한 사람의 역할 기준으로 홈 버튼 */}
-          <Link href={homePath}>
-            <button
-              className={`rounded-full px-3 py-1 font-medium ${
-                pathname.startsWith(homePath)
-                  ? "bg-black text-white"
-                  : "border border-gray-300 hover:bg-gray-100"
-              }`}
-            >
-              {role === "admin"
-                ? "관리자 홈"
-                : role === "teacher"
-                ? "선생님 홈"
-                : role === "parent"
-                ? "학부모 홈"
-                : "학생 홈"}
-            </button>
-          </Link>
+          {/* ✅ 관리자/선생님/학부모 공통 */}
+          {(role === "admin" || role === "teacher" || role === "parent") && (
+            <Link href={homePath}>
+              <button
+                className={`rounded-full px-3 py-1 font-medium ${
+                  pathname.startsWith(homePath)
+                    ? "bg-black text-white"
+                    : "border border-gray-300 hover:bg-gray-100"
+                }`}
+              >
+                {role === "admin"
+                  ? "관리자홈"
+                  : role === "teacher"
+                  ? "선생님홈"
+                  : "학부모홈"}
+              </button>
+            </Link>
+          )}
 
-          {/* ✅ 뷰어 모드일 때 학생 플래너/대시보드 버튼 표시 */}
+          {/* ✅ 학생 모드 */}
+          {role === "student" && !viewer && (
+            <>
+              <span className="rounded-full border border-gray-300 bg-white px-3 py-1 font-medium text-gray-500">
+                학습관리
+              </span>
+              <Link href="/student">
+                <button
+                  className={`rounded-full px-3 py-1 font-medium ${
+                    pathname === "/student"
+                      ? "bg-black text-white"
+                      : "border border-gray-300 hover:bg-gray-100"
+                  }`}
+                >
+                  플래너
+                </button>
+              </Link>
+              <Link href="/student/dashboard">
+                <button
+                  className={`rounded-full px-3 py-1 font-medium ${
+                    pathname.includes("/dashboard")
+                      ? "bg-black text-white"
+                      : "border border-gray-300 hover:bg-gray-100"
+                  }`}
+                >
+                  대시보드
+                </button>
+              </Link>
+            </>
+          )}
+
+          {/* ✅ 뷰어 모드 */}
           {viewer && effectiveViewerName && (
             <>
               <Link href={plannerPath}>
@@ -81,7 +112,7 @@ export default function UnifiedTopBar({
                       : "border border-gray-300 hover:bg-gray-100"
                   }`}
                 >
-                  {effectiveViewerName} 플래너
+                  {effectiveViewerName} 학생 플래너
                 </button>
               </Link>
               <Link href={dashboardPath}>
@@ -92,7 +123,7 @@ export default function UnifiedTopBar({
                       : "border border-gray-300 hover:bg-gray-100"
                   }`}
                 >
-                  {effectiveViewerName} 대시보드
+                  {effectiveViewerName} 학생 대시보드
                 </button>
               </Link>
             </>
@@ -101,7 +132,6 @@ export default function UnifiedTopBar({
 
         {/* ---------------- RIGHT ---------------- */}
         <div className="flex items-center space-x-2 text-gray-700">
-          {/* ✅ 로그인한 계정 정보는 항상 표시 */}
           {role && name && (
             <span>
               {role === "admin"
