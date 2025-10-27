@@ -7,17 +7,22 @@ export default function UnifiedTopBar({
   role,
   name,
   email,
+  viewerName, // ✅ 추가됨
 }: {
   role?: string;
   name?: string;
   email?: string;
+  viewerName?: string | null; // ✅ 타입 정의 추가
 }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
   // ✅ URL 파라미터로 전달된 viewer 모드
   const viewer = searchParams.get("viewer");
-  const viewerName = searchParams.get("name");
+  const viewerNameFromUrl = searchParams.get("name");
+
+  // ✅ props가 우선, 없으면 URL 파라미터 사용
+  const effectiveViewerName = viewerName ?? viewerNameFromUrl;
 
   const isDashboard = pathname.includes("/dashboard");
 
@@ -33,12 +38,12 @@ export default function UnifiedTopBar({
 
   // ✅ 뷰어 모드일 때 학생별 플래너/대시보드
   const plannerPath =
-    viewer && viewerName
-      ? `/student?viewer=${viewer}&name=${viewerName}`
+    viewer && effectiveViewerName
+      ? `/student?viewer=${viewer}&name=${effectiveViewerName}`
       : "/student";
   const dashboardPath =
-    viewer && viewerName
-      ? `/student/dashboard?viewer=${viewer}&name=${viewerName}`
+    viewer && effectiveViewerName
+      ? `/student/dashboard?viewer=${viewer}&name=${effectiveViewerName}`
       : "/student/dashboard";
 
   return (
@@ -66,7 +71,7 @@ export default function UnifiedTopBar({
           </Link>
 
           {/* ✅ 뷰어 모드일 때 학생 플래너/대시보드 버튼 표시 */}
-          {viewer && viewerName && (
+          {viewer && effectiveViewerName && (
             <>
               <Link href={plannerPath}>
                 <button
@@ -76,7 +81,7 @@ export default function UnifiedTopBar({
                       : "border border-gray-300 hover:bg-gray-100"
                   }`}
                 >
-                  {viewerName} 플래너
+                  {effectiveViewerName} 플래너
                 </button>
               </Link>
               <Link href={dashboardPath}>
@@ -87,7 +92,7 @@ export default function UnifiedTopBar({
                       : "border border-gray-300 hover:bg-gray-100"
                   }`}
                 >
-                  {viewerName} 대시보드
+                  {effectiveViewerName} 대시보드
                 </button>
               </Link>
             </>
