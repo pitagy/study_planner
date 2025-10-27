@@ -87,7 +87,7 @@ export default function ViewerDashboard({ viewerId, viewerName }: any) {
       <h1 className="text-2xl font-bold mb-2">{displayName}</h1>
 
       {/* ✅ AI 학습 요약 */}
-      <AIWeeklySummary supabase={supabase} viewerId={viewerId} />
+      <AIWeeklySummary viewerId={viewerId} />
 
       {/* ✅ 학습 히트맵 */}
       <section className="border rounded-lg p-4 bg-white shadow-sm">
