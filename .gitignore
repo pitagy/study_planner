@@ -1,0 +1,16 @@
+node_modules/
+.next/
+.env*
+*.log
+.vercel/
+.DS_Store
+out/
+.env
+.env.*.local
+*.env
+*.zip
+*.7z
+*.rar
+*.tar
+*.gz
+*.mp4

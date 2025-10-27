@@ -1,0 +1,475 @@
+'use client';
+
+import { useEffect, useMemo, useState } from 'react';
+import dayjs from 'dayjs';
+import 'dayjs/locale/ko';
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  CartesianGrid,
+  XAxis,
+  YAxis,
+  Tooltip,
+  Legend,
+  LabelList,
+} from 'recharts';
+import * as SB from '@/lib/supabaseClient';
+
+
+dayjs.locale('ko');
+
+const WEEK_LABELS = ['월', '화', '수', '목', '금', '토', '일'];
+const BG_LIGHT = '#f3f4f6';
+const COLOR_PLAN = '#f97316';
+const COLOR_ACTUAL = '#15803d';
+
+const pickSupabase = () =>
+  typeof (SB as any).getSupabaseBrowser === 'function'
+    ? (SB as any).getSupabaseBrowser()
+    : (SB as any).getSupabaseClient();
+
+function heatColor(v: number) {
+  if (v <= 0) return '#e5e7eb';
+  if (v < 60) return '#bfdbfe';
+  if (v < 120) return '#93c5fd';
+  if (v < 180) return '#60a5fa';
+  if (v < 300) return '#3b82f6';
+  return '#1d4ed8';
+}
+
+export default function ViewerDashboard({ viewerId, viewerName, viewerRole = 'student' }: any) {
+  const supabase = useMemo(() => pickSupabase(), []);
+  const [myUid, setMyUid] = useState<string | null>(null);
+  const [displayName, setDisplayName] = useState('대시보드');
+  const [loading, setLoading] = useState(true);
+  const [monthOffset, setMonthOffset] = useState(0);
+  const [selectedDate, setSelectedDate] = useState(dayjs().format('YYYY-MM-DD'));
+
+  const [monthCells, setMonthCells] = useState<any[]>([]);
+  const [memoDates, setMemoDates] = useState<{ date: string; count: number }[]>([]);
+  const [todayMemos, setTodayMemos] = useState<any[]>([]);
+  const [summaryData, setSummaryData] = useState<any[]>([]);
+  const [aiSummary, setAiSummary] = useState('');
+  const [aiRange, setAiRange] = useState('');
+  const [newMemo, setNewMemo] = useState('');
+
+  /** 초기화 */
+  useEffect(() => {
+    (async () => {
+      const { data: auth } = await supabase.auth.getUser();
+      const uid = auth?.user?.id ?? null;
+      setMyUid(uid);
+    })();
+  }, [supabase]);
+
+  /** 데이터 로드 */
+  useEffect(() => {
+    if (viewerId) loadAll();
+  }, [viewerId, monthOffset]);
+
+  /** 전체 데이터 로드 */
+  const loadAll = async () => {
+	  setLoading(true);
+	  try {
+		const today = dayjs();
+		const base = today.add(monthOffset, 'month');
+		const startOfMonth = base.startOf('month');
+		const endOfMonth = base.endOf('month');
+		const startOfWeek = today.startOf('week');
+		const endOfWeek = today.endOf('week');
+
+		// ✅ 프로필
+		const { data: profile } = await supabase
+		  .from('profiles')
+		  .select('name,email')
+		  .eq('id', viewerId)
+		  .single();
+		const name =
+		  profile?.name?.trim() || profile?.email?.split('@')[0] || '학생';
+		setDisplayName(
+		  myUid === viewerId
+			? '나의 대시보드'
+			: `${viewerName || name} 학생의 대시보드`
+		);
+
+		// ✅ 계획 + 실제 데이터
+		const [plansRes, sessRes] = await Promise.all([
+		  supabase
+			.from('plans')
+			.select('subject,start_at,end_at')
+			.eq('user_id', viewerId)
+			.gte('start_at', startOfMonth.toISOString())
+			.lte('end_at', endOfMonth.toISOString()),
+		  supabase
+			.from('sessions')
+			.select('subject,actual_start,actual_end,duration_min')
+			.eq('user_id', viewerId)
+			.gte('actual_start', startOfMonth.toISOString())
+			.lte('actual_end', endOfMonth.toISOString()),
+		]);
+
+		const plans = plansRes.data || [];
+		const sessions = sessRes.data || [];
+
+		// ✅ 오늘 요약 (KST)
+		const todayPlans = plans.filter((p) =>
+		  dayjs(p.start_at).add(9, 'hour').isSame(dayjs(), 'day')
+		);
+		const todaySessions = sessions.filter((s) =>
+		  dayjs(s.actual_start).add(9, 'hour').isSame(dayjs(), 'day')
+		);
+		setSummaryData(mergeSubjectCompare(todayPlans, todaySessions));
+
+		// ✅ 히트맵 구성
+		const daysInMonth = endOfMonth.date();
+		const offset = startOfMonth.day();
+		const cells: any[] = [];
+		for (let i = 0; i < offset; i++)
+		  cells.push({ key: `blank-${i}`, date: null, minutes: 0 });
+		for (let d = 1; d <= daysInMonth; d++) {
+		  const date = startOfMonth.date(d);
+		  const dateStr = date.format('YYYY-MM-DD');
+		  const mins = sessions
+			.filter((s) => dayjs(s.actual_start).isSame(date, 'day'))
+			.reduce((acc, s) => acc + (s.duration_min ?? 0), 0);
+		  cells.push({ key: dateStr, date: dateStr, minutes: mins });
+		}
+		setMonthCells(cells);
+
+		// ✅ 메모 날짜 목록
+		const { data: memos } = await supabase
+		  .from('dashboard_comments')
+		  .select('date')
+		  .eq('user_id', viewerId)
+		  .gte('date', startOfMonth.format('YYYY-MM-DD'))
+		  .lte('date', endOfMonth.format('YYYY-MM-DD'));
+
+		const memoCounts: Record<string, number> = {};
+		(memos || []).forEach((m: any) => {
+		  memoCounts[m.date] = (memoCounts[m.date] || 0) + 1;
+		});
+		const memoArr = Object.keys(memoCounts).map((d) => ({
+		  date: d,
+		  count: memoCounts[d],
+		}));
+		setMemoDates(memoArr);
+
+		// ✅ 오늘 메모
+		const { data: todayList } = await supabase
+		  .from('dashboard_comments')
+		  .select('*')
+		  .eq('user_id', viewerId)
+		  .eq('date', dayjs().format('YYYY-MM-DD'))
+		  .order('created_at');
+		setTodayMemos(todayList || []);
+
+		// ✅ AI 요약 데이터
+		const { data: ai } = await supabase
+		  .from('dashboard_ai')
+		  .select('*')
+		  .eq('user_id', viewerId)
+		  .gte('start_date', startOfWeek.format('YYYY-MM-DD'))
+		  .lte('end_date', endOfWeek.format('YYYY-MM-DD'))
+		  .maybeSingle();
+
+		if (ai?.summary && ai.summary.trim() !== '') {
+		  // ✅ 요약 데이터가 존재할 때
+		  setAiSummary(ai.summary);
+		  setAiRange(
+			`${startOfWeek.format('M/D(월)')}~${endOfWeek.format(
+			  'M/D(일)'
+			)} AI 학습 요약`
+		  );
+		} else {
+		  // ✅ 요약 데이터가 없을 때: 직접 계산
+
+		  const weekPlans =
+			(
+			  await supabase
+				.from('plans')
+				.select('start_at,end_at')
+				.eq('user_id', viewerId)
+				.gte('start_at', startOfWeek.toISOString())
+				.lte('end_at', endOfWeek.toISOString())
+			).data || [];
+
+		  const weekSessions =
+			(
+			  await supabase
+				.from('sessions')
+				.select('actual_start,actual_end,duration_min')
+				.eq('user_id', viewerId)
+				.gte('actual_start', startOfWeek.toISOString())
+				.lte('actual_end', endOfWeek.toISOString())
+			).data || [];
+
+		  // 🔸 분 단위 계산
+		  const planMinutes = weekPlans.reduce((acc, p) => {
+			const dur = dayjs(p.end_at).diff(dayjs(p.start_at), 'minute');
+			return acc + (dur > 0 ? dur : 0);
+		  }, 0);
+
+		  const actualMinutes = weekSessions.reduce((acc, s) => {
+			const dur =
+			  s.duration_min ??
+			  dayjs(s.actual_end).diff(dayjs(s.actual_start), 'minute');
+			return acc + (dur > 0 ? dur : 0);
+		  }, 0);
+
+		  // 🔸 분 → "시간+분" 단위 변환
+		  const formatHM = (mins: number) => {
+			const h = Math.floor(mins / 60);
+			const m = mins % 60;
+			return h > 0 ? `${h}시간 ${m}분` : `${m}분`;
+		  };
+
+		  const planHM = formatHM(planMinutes);
+		  const actualHM = formatHM(actualMinutes);
+
+		  // 🔸 실천율 계산
+		  const rate =
+			planMinutes > 0 ? Math.round((actualMinutes / planMinutes) * 100) : 0;
+
+		  // 🔸 평가 문구
+		  let evaluation = '';
+		  if (rate <= 40) {
+			evaluation = '저조한 편입니다. 좀 더 분발하여 주세요.';
+		  } else if (rate <= 79) {
+			evaluation =
+			  '양호한 편입니다. 그러나 아직 조금 부족합니다. 힘내세요. 화이팅!!';
+		  } else {
+			evaluation =
+			  '와우~~ 열심히 하고 있군요. 조금만 더 힘내서 목표를 달성하도록 해요!!';
+		  }
+
+		  // 🔸 최종 문장
+		  const summaryText =
+			`매주 일요일 AI 학습 요약이 생성됩니다. 아직 학습에 대한 요약이 생성되지 않았습니다.\n` +
+			`현재까지 계획 공부 시간은 ${planHM}이며 실제 공부 시간은 ${actualHM}입니다.\n` +
+			`이에 따른 실천율은 ${rate}%로 ${evaluation}`;
+
+		  setAiSummary(summaryText);
+		  setAiRange(
+			`${startOfWeek.format('M/D(월)')}~${endOfWeek.format(
+			  'M/D(일)'
+			)} AI 학습 요약`
+		  );
+		}
+	  } finally {
+		setLoading(false);
+	  }
+	};
+
+  /** 오늘 메모 저장 */
+  const handleSaveMemo = async () => {
+    if (!newMemo.trim()) return;
+    const today = dayjs().format('YYYY-MM-DD');
+    await supabase.from('dashboard_comments').insert([
+      {
+        user_id: viewerId,
+        date: today,
+        content: newMemo,
+        author_name: viewerName || '학생',
+        role: viewerRole,
+        created_at: new Date().toISOString(),
+      },
+    ]);
+    setNewMemo('');
+    handleDateClick(today);
+  };
+// 2
+  /** 날짜 클릭 시 */
+  const handleDateClick = async (dateStr: string) => {
+    setSelectedDate(dateStr);
+
+    const start = dayjs(dateStr).startOf('day').add(9, 'hour').toISOString();
+    const end = dayjs(dateStr).endOf('day').add(9, 'hour').toISOString();
+
+    const [plansRes, sessRes, memosRes] = await Promise.all([
+      supabase
+        .from('plans')
+        .select('subject,start_at,end_at')
+        .eq('user_id', viewerId)
+        .gte('start_at', start)
+        .lte('end_at', end),
+      supabase
+        .from('sessions')
+        .select('subject,actual_start,actual_end,duration_min')
+        .eq('user_id', viewerId)
+        .gte('actual_start', start)
+        .lte('actual_end', end),
+      supabase.from('dashboard_comments').select('*').eq('user_id', viewerId).eq('date', dateStr),
+    ]);
+
+    const plans = plansRes.data || [];
+    const sessions = sessRes.data || [];
+    setSummaryData(mergeSubjectCompare(plans, sessions));
+
+    const memos = memosRes.data || [];
+    const rootMemos = memos.filter((m) => !m.parent_id);
+    const replies = memos.filter((m) => m.parent_id);
+    const grouped = rootMemos.map((root) => ({
+      ...root,
+      replies: replies.filter((r) => r.parent_id === root.id),
+    }));
+    setTodayMemos(grouped);
+  };
+
+  if (loading) return <main className="p-6 text-gray-600">📊 데이터 불러오는 중...</main>;
+
+  const currentMonth = dayjs().add(monthOffset, 'month');
+
+  return (
+    <main className="p-6 space-y-8">
+      <h1 className="text-2xl font-bold">{displayName}</h1>
+
+      {/* ✅ AI 요약 카드 */}
+      <section className="bg-gradient-to-r from-indigo-50 to-white border rounded-lg p-4 shadow-sm">
+        <h2 className="font-semibold mb-1 text-indigo-700">🤖 {aiRange}</h2>
+        <p className="text-gray-700 whitespace-pre-wrap">{aiSummary}</p>
+      </section>
+
+      {/* ✅ 오늘의 메모 카드 */}
+      <section className="bg-white border rounded-lg p-4 shadow-sm">
+        <h2 className="font-semibold mb-2">📝 오늘의 메모 ({dayjs().format('M월 D일')})</h2>
+        <textarea
+          value={newMemo}
+          onChange={(e) => setNewMemo(e.target.value)}
+          placeholder="오늘 느낀 점이나 기록을 입력하세요..."
+          className="w-full border rounded p-2 mb-2 resize-none h-24"
+        />
+        <button
+          onClick={handleSaveMemo}
+          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+        >
+          저장
+        </button>
+        <div className="mt-4 border-t pt-3 text-sm space-y-1">
+          {todayMemos.length === 0 ? (
+            <p className="text-gray-500">오늘 작성된 메모가 없습니다.</p>
+          ) : (
+            todayMemos.map((m) => (
+              <div key={m.id}>
+                <span className="text-blue-600 font-medium">{m.author_name}</span> — {m.content}
+              </div>
+            ))
+          )}
+        </div>
+      </section>
+
+      {/* ✅ 히트맵 */}
+      <section className="bg-white rounded-lg border p-4">
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="font-semibold">📅 {currentMonth.format('YYYY년 M월')} 학습 히트맵</h2>
+          <div className="space-x-2">
+            <button onClick={() => setMonthOffset((p) => p - 1)} className="px-2 py-1 text-sm border rounded">
+              ◀ 이전달
+            </button>
+            <button onClick={() => setMonthOffset(0)} className="px-2 py-1 text-sm border rounded">
+              이번달
+            </button>
+            <button onClick={() => setMonthOffset((p) => p + 1)} className="px-2 py-1 text-sm border rounded">
+              다음달 ▶
+            </button>
+          </div>
+        </div>
+
+        {/* 요일 */}
+        <div className="grid grid-cols-7 text-center text-sm text-gray-500 mb-2">
+          {WEEK_LABELS.map((w) => (
+            <div key={w}>{w}</div>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-7 gap-2">
+          {monthCells.map((c) => {
+            if (!c.date) return <div key={c.key} className="w-16 h-16" />;
+            const memoCount = memoDates.find((m) => m.date === c.date)?.count || 0;
+            const isSelected = selectedDate === c.date;
+            return (
+              <button
+                key={c.key}
+                onClick={() => handleDateClick(c.date!)}
+                className={`relative w-16 h-16 rounded-md text-sm font-medium ${
+                  isSelected ? 'ring-2 ring-blue-600' : 'hover:ring-2 hover:ring-blue-400'
+                }`}
+                style={{ backgroundColor: c.minutes > 0 ? heatColor(c.minutes) : BG_LIGHT }}
+              >
+                <div className="absolute left-1 top-1 text-[11px]">{dayjs(c.date).date()}</div>
+                {memoCount > 0 && (
+                  <div className="absolute right-1 top-1 bg-blue-700 text-white rounded-full w-5 h-5 text-[10px] flex items-center justify-center">
+                    {memoCount}
+                  </div>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </section>
+//3
+      {/* ✅ 학습 요약 */}
+      <section className="bg-white rounded-lg border p-4">
+        <h2 className="font-semibold mb-2">
+          📊 {dayjs(selectedDate).format('YYYY.MM.DD (ddd)')} 학습 요약
+        </h2>
+        {summaryData.length === 0 ? (
+          <p className="text-gray-500 text-sm">해당 날짜의 계획 및 실제 공부 기록이 없습니다.</p>
+        ) : (
+          <ResponsiveContainer width="100%" height={260}>
+            <BarChart data={summaryData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="subject" />
+              <YAxis />
+              <Tooltip />
+              <Legend />
+              <Bar dataKey="계획" fill={COLOR_PLAN}>
+                <LabelList dataKey="계획" position="top" />
+              </Bar>
+              <Bar dataKey="실제" fill={COLOR_ACTUAL}>
+                <LabelList dataKey="실제" position="top" />
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        )}
+      </section>
+
+      {/* ✅ 이전 메모 + 대시보드 카드 자리 */}
+      <section className="bg-white rounded-lg border p-4 space-y-4">
+        <h2 className="font-semibold mb-3">📚 이전 메모 & 대시보드 카드</h2>
+
+        {/* 예시로 3개의 대시보드 카드 슬롯 */}
+        <div className="grid grid-cols-1 gap-3">
+          <div className="p-3 border rounded-lg shadow-sm">📈 과목별 실천율 카드</div>
+          <div className="p-3 border rounded-lg shadow-sm">📆 주간 총 공부시간 카드</div>
+          <div className="p-3 border rounded-lg shadow-sm">🏆 목표 달성도 카드</div>
+        </div>
+      </section>
+    </main>
+  );
+}
+
+/** 과목별 비교 함수 */
+function mergeSubjectCompare(plans: any[], sessions: any[]) {
+  const pMap: Record<string, number> = {};
+  plans.forEach((p) => {
+    const subj = p.subject || '기타';
+    const dur = dayjs(p.end_at).diff(dayjs(p.start_at), 'minute');
+    pMap[subj] = (pMap[subj] || 0) + Math.max(0, dur);
+  });
+
+  const sMap: Record<string, number> = {};
+  sessions.forEach((s) => {
+    const subj = s.subject || '기타';
+    const dur = s.duration_min ?? dayjs(s.actual_end).diff(dayjs(s.actual_start), 'minute');
+    sMap[subj] = (sMap[subj] || 0) + Math.max(0, dur);
+  });
+
+  const subjects = Array.from(new Set([...Object.keys(pMap), ...Object.keys(sMap)]));
+  return subjects.map((subj) => {
+    const plan = pMap[subj] || 0;
+    const actual = sMap[subj] || 0;
+    const rate = plan > 0 ? Math.round((actual / plan) * 100) : 0;
+    return { subject: subj, 계획: plan, 실제: actual, 실천율: rate };
+  });
+}
