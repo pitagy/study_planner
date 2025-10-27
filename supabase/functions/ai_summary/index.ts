@@ -1,14 +1,12 @@
 // ────────────────────────────────────────────────
 // 📘 Supabase Edge Function : ai_summary
-// 로컬에서는 Authorization 검사 비활성화
-// 배포 시 JWT 인증 활성화
 // ────────────────────────────────────────────────
 
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import dayjsLib from "npm:dayjs";
-import utc from "npm:dayjs/plugin/utc";
-import tz from "npm:dayjs/plugin/timezone";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import dayjsLib from "https://esm.sh/dayjs@1.11.10";
+import utc from "https://esm.sh/dayjs@1.11.10/plugin/utc.js";
+import tz from "https://esm.sh/dayjs@1.11.10/plugin/timezone.js";
 import { v4 as uuidv4 } from "https://esm.sh/uuid@9.0.0";
 
 dayjsLib.extend(utc);
@@ -86,47 +84,12 @@ function getPreviousWeekRangeKST(base: dayjsLib.Dayjs) {
 // 🏁 Edge Function 시작
 serve(async (req) => {
   try {
-    const url = new URL(req.url);
-
-    // ✅ 모든 로컬 실행 환경 감지 (localhost, 127.x, 0.0.0.0, ::1, 172.x 등)
-    const isLocal =
-      ["localhost", "127.0.0.1", "0.0.0.0", "::1"].includes(url.hostname) ||
-      url.hostname.startsWith("172.") ||
-      Deno.env.get("SUPABASE_ENV") === "local" ||
-      Deno.env.get("IS_LOCAL") === "true";
-
-    // ✅ 로컬이면 Authorization 검사 생략
-    if (!isLocal) {
-      const auth = req.headers.get("authorization");
-      if (!auth) {
-        return new Response(
-          JSON.stringify({ msg: "Error: Missing authorization header" }),
-          {
-            status: 401,
-            headers: { "content-type": "application/json" },
-          }
-        );
-      }
-
-      const token = auth.replace("Bearer ", "").trim();
-      const { data: authData, error: authErr } = await supabase.auth.getUser(token);
-      if (authErr || !authData?.user) {
-        return new Response(JSON.stringify({ msg: "Invalid JWT" }), {
-          status: 401,
-          headers: { "content-type": "application/json" },
-        });
-      }
-    } else {
-      console.log("🧩 Local mode detected — Authorization check skipped");
-    }
-
-    // ✅ 요청 본문
     const { user_id } = await req.json();
     if (!user_id)
-      return new Response(
-        JSON.stringify({ msg: "user_id required" }),
-        { status: 400, headers: { "content-type": "application/json" } }
-      );
+      return new Response(JSON.stringify({ msg: "user_id required" }), {
+        status: 400,
+        headers: { "content-type": "application/json" },
+      });
 
     console.log("📩 Received user_id:", user_id);
 
@@ -169,10 +132,10 @@ serve(async (req) => {
     const sessionsArr = sessions ?? [];
 
     if (sessionsArr.length === 0 && plansArr.length === 0)
-      return new Response(
-        JSON.stringify({ msg: "No study data" }),
-        { status: 200, headers: { "content-type": "application/json" } }
-      );
+      return new Response(JSON.stringify({ msg: "No study data" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
 
     // 총 공부시간
     const totalMin = sessionsArr.reduce(
@@ -180,10 +143,10 @@ serve(async (req) => {
       0
     );
     if (totalMin <= 0)
-      return new Response(
-        JSON.stringify({ msg: "Empty duration" }),
-        { status: 200, headers: { "content-type": "application/json" } }
-      );
+      return new Response(JSON.stringify({ msg: "Empty duration" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
 
     // 하루 평균
     const daySet = new Set(
@@ -212,7 +175,7 @@ serve(async (req) => {
       .tz()
       .format("M월 D일");
 
-    // 중복 방지: 이미 요약된 주차는 건너뜀
+    // 중복 방지
     const { data: existing } = await supabase
       .from("dashboard_ai")
       .select("id")
@@ -222,10 +185,10 @@ serve(async (req) => {
       .maybeSingle();
 
     if (existing?.id)
-      return new Response(
-        JSON.stringify({ msg: "Already summarized" }),
-        { status: 200, headers: { "content-type": "application/json" } }
-      );
+      return new Response(JSON.stringify({ msg: "Already summarized" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
 
     // GPT 요약 생성
     const prompt = buildPrompt({
@@ -249,10 +212,10 @@ serve(async (req) => {
     ]);
 
     console.log("✅ Weekly summary created successfully for:", user_id);
-    return new Response(
-      JSON.stringify({ msg: "ok", summary }),
-      { status: 200, headers: { "content-type": "application/json" } }
-    );
+    return new Response(JSON.stringify({ msg: "ok", summary }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
   } catch (err) {
     console.error("❌ Error:", err);
     return new Response(
