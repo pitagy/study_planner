@@ -7,7 +7,7 @@ import { useProfile } from '@/hooks/useProfile';
 type Role = 'admin' | 'teacher' | 'student' | 'parent' | 'pending';
 
 export default function RequireAuth({
-  allow, // 허용 역할 목록 (예: ['admin'])
+  allow,
   children,
 }: {
   allow?: Role[];
@@ -46,12 +46,14 @@ export default function RequireAuth({
 
     // 5️⃣ 허용되지 않은 역할 접근 → 자신의 홈으로 이동
     if (allow && !allow.includes(profile.role as Role)) {
+      const role = profile?.role as Role; // ✅ 명시적 캐스팅 추가
+
       const home =
-        profile?.role === 'admin'
+        role === 'admin'
           ? '/admin'
-          : profile?.role === 'teacher'
+          : role === 'teacher'
           ? '/teacher'
-          : profile?.role === 'parent'
+          : role === 'parent'
           ? '/parent'
           : '/student';
 
