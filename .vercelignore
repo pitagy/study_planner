@@ -1,0 +1,4 @@
+supabase/
+*.log
+*.mjs
+unused-report.html
