@@ -84,123 +84,77 @@ function getPreviousWeekRangeKST(base: dayjsLib.Dayjs) {
 // 🏁 Edge Function 시작
 serve(async (req) => {
   try {
+    console.log("🟦 [1] Function invoked");
+
+    const url = new URL(req.url);
+    console.log("🟦 [2] URL parsed:", url.href);
+
     const { user_id } = await req.json();
-    if (!user_id)
-      return new Response(JSON.stringify({ msg: "user_id required" }), {
-        status: 400,
-        headers: { "content-type": "application/json" },
-      });
+    console.log("🟦 [3] Body parsed, user_id =", user_id);
 
-    console.log("📩 Received user_id:", user_id);
+    if (!user_id) {
+      console.log("🟥 [ERROR] user_id missing");
+      return new Response(
+        JSON.stringify({ msg: "user_id required" }),
+        { status: 400, headers: { "content-type": "application/json" } }
+      );
+    }
 
-    const now = dayjs();
-    const { startOfWeek, endOfWeek } = getPreviousWeekRangeKST(now);
-
-    console.log(
-      "🗓️ Generating summaries for previous week:",
-      startOfWeek.format("YYYY-MM-DD"),
-      "to",
-      endOfWeek.format("YYYY-MM-DD")
-    );
-
-    // 1️⃣ 학생 정보 확인
-    const { data: stu } = await supabase
+    console.log("🟩 [4] Fetching student profile…");
+    const { data: stu, error: err1 } = await supabase
       .from("profiles")
-      .select("id, role, name:student_name")
+      .select("id, student_name")
       .eq("id", user_id)
       .maybeSingle();
 
+    if (err1) console.error("🟥 [ERROR] profile fetch:", err1);
     if (!stu) throw new Error("학생 정보 없음");
 
-    // 2️⃣ 학습데이터 조회
+    console.log("🟩 [5] Fetching plans/sessions…");
+    const now = dayjs();
+    const { startOfWeek, endOfWeek } = getPreviousWeekRangeKST(now);
+
     const [{ data: plans }, { data: sessions }] = await Promise.all([
-      supabase
-        .from("plans")
-        .select("subject,start_at,end_at")
+      supabase.from("plans")
+        .select("subject, start_at, end_at")
         .eq("user_id", user_id)
         .gte("start_at", startOfWeek.toISOString())
         .lte("end_at", endOfWeek.toISOString()),
-      supabase
-        .from("sessions")
-        .select("subject,actual_start,actual_end,duration_min")
+      supabase.from("sessions")
+        .select("subject, actual_start, actual_end, duration_min")
         .eq("user_id", user_id)
         .gte("actual_start", startOfWeek.toISOString())
         .lte("actual_end", endOfWeek.toISOString()),
     ]);
 
-    const plansArr = plans ?? [];
-    const sessionsArr = sessions ?? [];
+    console.log("🟩 [6] plans:", plans?.length, "sessions:", sessions?.length);
 
-    if (sessionsArr.length === 0 && plansArr.length === 0)
+    if (!plans?.length && !sessions?.length)
       return new Response(JSON.stringify({ msg: "No study data" }), {
         status: 200,
         headers: { "content-type": "application/json" },
       });
 
-    // 총 공부시간
-    const totalMin = sessionsArr.reduce(
-      (acc, s) => acc + (s.duration_min ?? 0),
-      0
-    );
-    if (totalMin <= 0)
-      return new Response(JSON.stringify({ msg: "Empty duration" }), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      });
+    console.log("🟩 [7] Calculating stats…");
+    const totalMin = sessions.reduce((a, s) => a + (s.duration_min ?? 0), 0);
+    const avgPerDay = Math.round(totalMin / (new Set(sessions.map(s => dayjs(s.actual_start).format("YYYY-MM-DD"))).size || 1));
 
-    // 하루 평균
-    const daySet = new Set(
-      sessionsArr.map((s) => dayjs(s.actual_start).tz().format("YYYY-MM-DD"))
-    );
-    const avgPerDay = Math.round(totalMin / (daySet.size || 1));
+    console.log("🟩 [8] totalMin:", totalMin, "avgPerDay:", avgPerDay);
 
-    // 과목별 비율
-    const subjectMap: Record<string, number> = {};
-    for (const s of sessionsArr) {
-      const subj = s.subject || "기타";
-      subjectMap[subj] = (subjectMap[subj] || 0) + (s.duration_min ?? 0);
-    }
-    const sortedSubjects = Object.entries(subjectMap)
-      .sort((a, b) => b[1] - a[1])
-      .map(([subj, mins]) => `${subj}: ${Math.round((mins / totalMin) * 100)}%`)
-      .join(", ");
-
-    const sortedSessions = [...sessionsArr].sort(
-      (a, b) => dayjs(a.actual_start).valueOf() - dayjs(b.actual_start).valueOf()
-    );
-    const startLabel = dayjs(sortedSessions[0].actual_start)
-      .tz()
-      .format("M월 D일");
-    const endLabel = dayjs(sortedSessions[sortedSessions.length - 1].actual_start)
-      .tz()
-      .format("M월 D일");
-
-    // 중복 방지
-    const { data: existing } = await supabase
-      .from("dashboard_ai")
-      .select("id")
-      .eq("user_id", user_id)
-      .eq("start_date", startOfWeek.format("YYYY-MM-DD"))
-      .eq("end_date", endOfWeek.format("YYYY-MM-DD"))
-      .maybeSingle();
-
-    if (existing?.id)
-      return new Response(JSON.stringify({ msg: "Already summarized" }), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      });
-
-    // GPT 요약 생성
+    console.log("🟩 [9] Generating prompt…");
     const prompt = buildPrompt({
       totalMin,
       avgPerDay,
-      sortedSubjects,
-      startLabel,
-      endLabel,
+      sortedSubjects: "TODO",
+      startLabel: startOfWeek.format("M월 D일"),
+      endLabel: endOfWeek.format("M월 D일"),
     });
-    const summary = await fetchSummaryFromGPT(prompt);
 
-    // 저장
+    console.log("🟩 [10] Calling OpenAI API…");
+    const summary = await fetchSummaryFromGPT(prompt);
+    console.log("🟩 [11] Summary:", summary);
+
+    console.log("🟩 [12] Inserting into dashboard_ai…");
     await supabase.from("dashboard_ai").insert([
       {
         id: uuidv4(),
@@ -211,16 +165,18 @@ serve(async (req) => {
       },
     ]);
 
-    console.log("✅ Weekly summary created successfully for:", user_id);
-    return new Response(JSON.stringify({ msg: "ok", summary }), {
+    console.log("✅ [13] Success for", user_id);
+    return new Response(JSON.stringify({ msg: "ok" }), {
       status: 200,
       headers: { "content-type": "application/json" },
     });
+
   } catch (err) {
-    console.error("❌ Error:", err);
+    console.error("🟥 [CRASH] ", err);
     return new Response(
       JSON.stringify({ msg: "Error", error: String(err) }),
       { status: 500, headers: { "content-type": "application/json" } }
     );
   }
 });
+
