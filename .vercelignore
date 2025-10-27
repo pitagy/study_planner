@@ -1,4 +1,4 @@
-supabase/
-*.log
-*.mjs
-unused-report.html
+supabase/functions/
+supabase/config.toml
+supabase/.temp/
+supabase/migrations/
