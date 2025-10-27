@@ -46,14 +46,14 @@ export default function RequireAuth({
 
     // 5️⃣ 허용되지 않은 역할 접근 → 자신의 홈으로 이동
     if (allow && !allow.includes(profile.role as Role)) {
-	const home =
-	  profile?.role === 'admin'
-		? '/admin'
-		: profile?.role === 'teacher'
-		? '/teacher'
-		: profile?.role === 'parent'
-		? '/parent'
-		: '/student';
+      const home =
+        profile?.role === 'admin'
+          ? '/admin'
+          : profile?.role === 'teacher'
+          ? '/teacher'
+          : profile?.role === 'parent'
+          ? '/parent'
+          : '/student';
 
       router.replace(home);
     }
