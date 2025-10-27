@@ -19,7 +19,7 @@ export default function AIWeeklySummary({ viewerId }: AIWeeklySummaryProps) {
 
     const fetchSummary = async () => {
       try {
-        // 🔹 이번 주 월~일 날짜 구간
+        // 🔹 이번 주 월~일 날짜 구간 계산
         const now = new Date();
         const day = now.getDay();
         const diffToMonday = day === 0 ? 6 : day - 1;
@@ -35,17 +35,30 @@ export default function AIWeeklySummary({ viewerId }: AIWeeklySummaryProps) {
         )}`;
         setRange(formattedRange);
 
-        // 🔹 Supabase에서 요약 텍스트 불러오기
+        // ✅ Supabase의 dashboard_ai 테이블에서 최신 요약 데이터 불러오기
         const { data, error } = await supabase
-          .from('ai_weekly_summaries')
-          .select('summary')
-          .eq('student_id', viewerId)
+          .from('dashboard_ai')
+          .select('summary, start_date, end_date')
+          .eq('user_id', viewerId)
           .order('created_at', { ascending: false })
           .limit(1)
           .maybeSingle();
 
         if (error) throw error;
-        setSummary(data?.summary || '요약 데이터가 없습니다.');
+
+        if (data) {
+          setSummary(data.summary || '요약 데이터가 없습니다.');
+          if (data.start_date && data.end_date) {
+            const formatted = `${format(new Date(data.start_date), 'M월 d일', { locale: ko })} ~ ${format(
+              new Date(data.end_date),
+              'M월 d일',
+              { locale: ko }
+            )}`;
+            setRange(formatted);
+          }
+        } else {
+          setSummary('요약 데이터가 없습니다.');
+        }
       } catch (err) {
         console.error('AIWeeklySummary Error:', err);
         setSummary('요약 데이터를 불러오는 중 오류가 발생했습니다.');
