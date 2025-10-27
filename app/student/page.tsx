@@ -138,7 +138,7 @@ export default function StudentPlannerPage() {
 
         <CalendarBoard plans={plans} readOnly={readOnly} onSelectSlot={onSelectSlot} />
 
-        <FloatingTimer/>
+        {role === 'student' && <FloatingTimer />}
       </main>
     </RequireAuth>
   );
