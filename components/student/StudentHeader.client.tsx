@@ -15,7 +15,7 @@ export default function StudentHeaderClient() {
       <>
         <div className="sticky top-0 z-40 bg-white/95 backdrop-blur border-b">
           <div className="mx-auto max-w-6xl px-4">
-            <UserTopBar />
+            <UserTopBar role="student" />
           </div>
         </div>
         
