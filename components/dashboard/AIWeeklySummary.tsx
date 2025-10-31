@@ -111,7 +111,7 @@ export default function AIWeeklySummary({ viewerId, selectedDate }: AIWeeklySumm
           <p className="text-gray-700 leading-relaxed">
             학습에 대한 요약이 생성되지 않았습니다. <br />
 			매주 월요일 자정에 자동으로 학습에 대한 AI 요약이 진행됩니다. <br />
-			------------------------------------------------------------
+			------------------------------------------------------------<br />
             선택한 주의 계획 공부 시간은 {planH}시간 {planM}분이며 <br /> 실제 공부 시간은 {actH}시간 {actM}분입니다. <br />
             이에 따른 실천율은 {rate}%로 <br /> {rateMsg}
           </p>
