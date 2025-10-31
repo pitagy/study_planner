@@ -27,14 +27,18 @@ const formatTime = (minutes: number) => {
   return `${String(h).padStart(2, '0')}시간 ${String(m).padStart(2, '0')}분`;
 };
 
-export default function DailySummarySection({
-  viewerId,
-  selectedDate,
-}: {
+/** ✅ Props 타입 정의 */
+type DailySummarySectionProps = {
+  supabase: any;
   viewerId: string;
   selectedDate: string;
-}) {
-  const supabase = useMemo(() => pickSupabase(), []);
+};
+
+export default function DailySummarySection({
+  supabase,
+  viewerId,
+  selectedDate,
+}: DailySummarySectionProps) {
   const [data, setData] = useState<any[]>([]);
   const [planMin, setPlanMin] = useState(0);
   const [actualMin, setActualMin] = useState(0);
