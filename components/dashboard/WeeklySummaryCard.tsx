@@ -5,6 +5,8 @@ import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip } from 'rec
 import { Card, CardContent } from '@/components/ui/card';
 import * as SB from '@/lib/supabaseClient';
 import dayjs from 'dayjs';
+import weekOfYear from 'dayjs/plugin/weekOfYear'; // ✅ 추가
+dayjs.extend(weekOfYear); // ✅ 플러그인 등록
 
 const pickSupabase = () =>
   typeof (SB as any).getSupabaseBrowser === 'function'
@@ -38,7 +40,7 @@ export default function WeeklySummaryCard({ viewerId }: { viewerId: string }) {
 
     const weekMap = new Map<string, number>();
     data?.forEach((s) => {
-      const week = dayjs(s.actual_start).week();
+      const week = dayjs(s.actual_start).week(); // ✅ 이제 정상 작동
       weekMap.set(week.toString(), (weekMap.get(week.toString()) || 0) + (s.duration_min || 0));
     });
 
