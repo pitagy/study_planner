@@ -13,7 +13,8 @@ import StudyHeatmap from './StudyHeatmap';
 
 import PlanActualCard from './PlanActualCard';
 import SubjectFocusCard from './SubjectFocusCard';
-import WeeklyChangeCard from './WeeklyChangeCard';
+// import WeeklyChangeCard from './WeeklyChangeCard';  // 🔸 삭제
+import DailySubjectChartCard from './DailySubjectChartCard'; // 🔹 추가
 import WeeklySummaryCard from './WeeklySummaryCard';
 import TimeOfDayFocusCard from './TimeOfDayFocusCard';
 import MonthlyTotalCard from './MonthlyTotalCard';
@@ -53,7 +54,7 @@ export default function ViewerDashboard({ viewerId, viewerName }: any) {
       if (!viewerId) return;
       try {
         const { data, error } = await supabase
-          .from('study_days') // ✅ 존재하는 테이블로 교체
+          .from('study_days')
           .select('date, total_seconds, plan_seconds')
           .eq('user_id', viewerId)
           .order('date', { ascending: true });
@@ -64,7 +65,6 @@ export default function ViewerDashboard({ viewerId, viewerName }: any) {
           return;
         }
 
-        // 초 → 분 단위로 변환
         const mapped = (data || []).map((row) => ({
           date: row.date,
           plan_min: Math.round((row.plan_seconds || 0) / 60),
@@ -87,7 +87,7 @@ export default function ViewerDashboard({ viewerId, viewerName }: any) {
       <h1 className="text-2xl font-bold mb-2">{displayName}</h1>
 
       {/* ✅ AI 학습 요약 */}
-      <AIWeeklySummary viewerId={viewerId} />
+      <AIWeeklySummary viewerId={viewerId} selectedDate={selectedDate} />
 
       {/* ✅ 학습 히트맵 */}
       <section className="border rounded-lg p-4 bg-white shadow-sm">
@@ -100,26 +100,26 @@ export default function ViewerDashboard({ viewerId, viewerName }: any) {
         />
       </section>
 
-
       {/* ✅ 오늘의 학습 요약 */}
       <DailySummarySection
         supabase={supabase}
         viewerId={viewerId}
         selectedDate={selectedDate}
       />
-	  
-	        {/* ✅ 오늘의 메모 */}
+
+      {/* ✅ 오늘의 메모 */}
       <TodayMemoSection
         supabase={supabase}
         viewerId={viewerId}
         selectedDate={selectedDate}
       />
-	  
+
       {/* ✅ 하단 분석 카드 영역 */}
       <section className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         <PlanActualCard viewerId={viewerId} />
         <SubjectFocusCard viewerId={viewerId} />
-        <WeeklyChangeCard viewerId={viewerId} />
+        {/* 🔹 WeeklyChangeCard → DailySubjectChartCard로 교체 */}
+        <DailySubjectChartCard viewerId={viewerId} selectedDate={selectedDate} />
         <WeeklySummaryCard viewerId={viewerId} />
         <TimeOfDayFocusCard viewerId={viewerId} />
         <TodayEfficiencyCard viewerId={viewerId} />

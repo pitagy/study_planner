@@ -1,101 +1,116 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { Card, CardContent } from '@/components/ui/card';
+import * as SB from '@/lib/supabaseClient';
 import dayjs from 'dayjs';
-import {
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-  CartesianGrid,
-  XAxis,
-  YAxis,
-  Tooltip,
-  Legend,
-  LabelList,
-} from 'recharts';
 
-const COLOR_PLAN = '#a5b4fc';
-const COLOR_ACTUAL = '#6366f1';
+const pickSupabase = () =>
+  typeof (SB as any).getSupabaseBrowser === 'function'
+    ? (SB as any).getSupabaseBrowser()
+    : (SB as any).getSupabaseClient();
 
-export default function DailySubjectChartCard({ supabase, viewerId, selectedDate }: any) {
-  const [data, setData] = useState<any[]>([]);
-  const [label, setLabel] = useState('');
+/** ✅ 분 → "00시간 00분" */
+const formatTime = (minutes: number) => {
+  const h = Math.floor((minutes ?? 0) / 60);
+  const m = (minutes ?? 0) % 60;
+  return `${String(h).padStart(2, '0')}시간 ${String(m).padStart(2, '0')}분`;
+};
+
+/** ✅ 툴팁 */
+const CustomTooltip = ({ active, payload, label }: any) => {
+  if (active && payload?.length) {
+    const plan = payload.find((p: any) => p.dataKey === '계획')?.value ?? 0;
+    const actual = payload.find((p: any) => p.dataKey === '실제')?.value ?? 0;
+
+    return (
+      <div className="bg-white border border-gray-300 rounded p-2 text-sm shadow-md">
+        <p className="font-semibold mb-1">{label}</p>
+        <p className="text-purple-600">계획: {formatTime(plan)}</p>
+        <p className="text-blue-600">실제: {formatTime(actual)}</p>
+      </div>
+    );
+  }
+  return null;
+};
+
+export default function DailySubjectChartCard({
+  viewerId,
+  selectedDate,
+}: {
+  viewerId: string;
+  selectedDate: string;
+}) {
+  const supabase = useMemo(() => pickSupabase(), []);
+  const [chartData, setChartData] = useState<any[]>([]);
 
   useEffect(() => {
-    if (viewerId && selectedDate) loadData(selectedDate);
+    if (viewerId && selectedDate) loadChartData();
   }, [viewerId, selectedDate]);
 
-  const loadData = async (date: string) => {
-    const start = dayjs(date).startOf('day').toISOString();
-    const end = dayjs(date).endOf('day').toISOString();
-    setLabel(dayjs(date).format('YYYY년 M월 D일 (ddd)'));
-
-    const [plansRes, sessionsRes] = await Promise.all([
-      supabase
-        .from('plans')
-        .select('subject,start_at,end_at')
+  const loadChartData = async () => {
+    try {
+      // ✅ 1️⃣ plans_kst_view에서 과목별 계획 공부시간 합계
+      const { data: planData, error: planError } = await supabase
+        .from('plans_kst_view')
+        .select('subject, start_kst, end_kst, date_kst')
         .eq('user_id', viewerId)
-        .gte('start_at', start)
-        .lte('end_at', end),
-      supabase
-        .from('sessions')
-        .select('subject,actual_start,actual_end,duration_min')
+        .eq('date_kst', selectedDate);
+
+      if (planError) throw planError;
+
+      const planMap: Record<string, number> = {};
+      (planData || []).forEach((p) => {
+        const durationMin = (dayjs(p.end_kst).diff(dayjs(p.start_kst), 'minute')) || 0;
+        planMap[p.subject || '기타'] = (planMap[p.subject || '기타'] || 0) + durationMin;
+      });
+
+      // ✅ 2️⃣ sessions_kst_view에서 과목별 실제 공부시간 합계
+      const { data: sessData, error: sessError } = await supabase
+        .from('sessions_kst_view')
+        .select('subject, duration_min, date_kst')
         .eq('user_id', viewerId)
-        .gte('actual_start', start)
-        .lte('actual_end', end),
-    ]);
+        .eq('date_kst', selectedDate);
 
-    const plans = plansRes.data || [];
-    const sessions = sessionsRes.data || [];
+      if (sessError) throw sessError;
 
-    const pMap: Record<string, number> = {};
-    plans.forEach((p) => {
-      const subj = p.subject || '기타';
-      const dur = dayjs(p.end_at).diff(dayjs(p.start_at), 'minute');
-      pMap[subj] = (pMap[subj] || 0) + Math.max(0, dur);
-    });
+      const actMap: Record<string, number> = {};
+      (sessData || []).forEach((s) => {
+        actMap[s.subject || '기타'] = (actMap[s.subject || '기타'] || 0) + (s.duration_min ?? 0);
+      });
 
-    const sMap: Record<string, number> = {};
-    sessions.forEach((s) => {
-      const subj = s.subject || '기타';
-      const dur = s.duration_min ?? dayjs(s.actual_end).diff(dayjs(s.actual_start), 'minute');
-      sMap[subj] = (sMap[subj] || 0) + Math.max(0, dur);
-    });
+      // ✅ 3️⃣ 병합하여 차트 데이터 구성
+      const allSubjects = Array.from(new Set([...Object.keys(planMap), ...Object.keys(actMap)]));
 
-    const subjects = Array.from(new Set([...Object.keys(pMap), ...Object.keys(sMap)]));
-    const merged = subjects.map((subj) => ({
-      subject: subj,
-      계획: Math.round(pMap[subj] || 0),
-      실제: Math.round(sMap[subj] || 0),
-    }));
+      const merged = allSubjects.map((sub) => ({
+        과목: sub,
+        계획: planMap[sub] || 0,
+        실제: actMap[sub] || 0,
+      }));
 
-    setData(merged);
+      setChartData(merged);
+    } catch (err) {
+      console.error('[DailySubjectChartCard] Error:', err);
+    }
   };
 
   return (
-    <section className="bg-white rounded-lg border p-4 shadow-sm">
-      <h2 className="font-semibold mb-2">📊 {label || '날짜를 선택하세요'}</h2>
-      {data.length === 0 ? (
-        <p className="text-gray-400 text-sm">
-          {selectedDate ? '해당 날짜의 학습 기록이 없습니다.' : '히트맵에서 날짜를 선택하세요.'}
-        </p>
-      ) : (
-        <ResponsiveContainer width="100%" height={260}>
-          <BarChart data={data}>
+    <Card>
+      <CardContent className="p-4">
+        <h3 className="font-semibold mb-2">📊 과목별 공부시간 비교</h3>
+        <ResponsiveContainer width="100%" height={250}>
+          <BarChart data={chartData} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="subject" />
+            <XAxis dataKey="과목" />
             <YAxis />
-            <Tooltip />
+            <Tooltip content={<CustomTooltip />} />
             <Legend />
-            <Bar dataKey="계획" fill={COLOR_PLAN}>
-              <LabelList dataKey="계획" position="top" />
-            </Bar>
-            <Bar dataKey="실제" fill={COLOR_ACTUAL}>
-              <LabelList dataKey="실제" position="top" />
-            </Bar>
+            <Bar dataKey="계획" fill="#a78bfa" name="계획 시간" barSize={40} />
+            <Bar dataKey="실제" fill="#60a5fa" name="실제 시간" barSize={40} />
           </BarChart>
         </ResponsiveContainer>
-      )}
-    </section>
+      </CardContent>
+    </Card>
   );
 }
