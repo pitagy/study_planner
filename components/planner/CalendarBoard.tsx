@@ -291,7 +291,7 @@ export default function CalendarBoard({
         select={handleSelect}
         eventClick={handleEventClick}
         locale={koLocale}
-        slotMinTime="06:00:00"
+        slotMinTime="00:00:00"
         slotMaxTime="24:00:00"
         height="auto"
         events={events}
